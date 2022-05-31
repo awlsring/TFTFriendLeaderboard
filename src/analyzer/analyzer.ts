@@ -1,7 +1,7 @@
 import { Nerd, NerdInfo } from "../nerd/nerd";
 import * as dotenv from "dotenv";
 import { TftApi, } from 'twisted'
-import { RegionGroups } from "twisted/dist/constants";
+import { RegionGroups, Regions } from "twisted/dist/constants";
 import { GetRankObject, GetTierObject, I, IRON, TierRank } from "./ranks";
 import { LeagueEntryDTO } from "twisted/dist/models-dto/league/tft-league";
 import { MatchTFTDTO } from "twisted/dist/models-dto";
@@ -34,6 +34,11 @@ interface NerdPointTotal extends NerdAgainstNerdPoints {
   matches: number
 }
 
+interface GetAllMatchDataResult {
+  matches: string[],
+  nerdPoints: NerdPointTotal[]
+}
+
 export class MatchAnalyzer {
   private client: TftApi
   readonly regionGroups: RegionGroups
@@ -44,7 +49,7 @@ export class MatchAnalyzer {
     this.regionGroups = RegionGroups.AMERICAS
   }
 
-  async GetAllMatchData(nerds: Nerd[]): Promise<NerdAgainstNerdPoints[]> {
+  async GetAllMatchData(nerds: Nerd[], matchFilter: string[]): Promise<GetAllMatchDataResult> {
     const all: string[] = []
     for (const nerd of nerds) {
       let matches = await this.getMatches(nerd)
@@ -52,9 +57,11 @@ export class MatchAnalyzer {
     }
 
     const duplicates = all.filter(function(value,index,self){ return (self.indexOf(value) !== index )})
-
+    const filtered = duplicates.filter(d => {
+      return !matchFilter.includes(d)
+    })
     const matchesDetails = []
-    for (const match of duplicates) {
+    for (const match of filtered) {
       try {
         let details = await this.getMatchDetails(match)
         matchesDetails.push(details)
@@ -88,13 +95,17 @@ export class MatchAnalyzer {
       })
     })
 
-    return Array.from(nerdPlacements.values())
+    const nerdPointTotals = Array.from(nerdPlacements.values())
+    return {
+      matches: filtered,
+      nerdPoints: nerdPointTotals,
+    }
   }
 
   async BuildNerdDetails(nerds: NerdInfo[]): Promise<Nerd[]> {
     const newNerds: Nerd[] = []
     for (const n of nerds) {
-      const summoner = await this.client.Summoner.getByName(n.name, n.region)
+      const summoner = await this.client.Summoner.getByName(n.name, n.region as Regions)
       let newNerd = {
         ...n,
         puuid: summoner.response.puuid,
@@ -139,7 +150,6 @@ export class MatchAnalyzer {
         nerd: placement.nerd,
         points: nerdsInMatch - differential
       })
-      console.log(rank)
       nerdRanks.push(rank)
     }
 
@@ -165,7 +175,7 @@ export class MatchAnalyzer {
       winRate: 0,
       matches: 0
     }
-    const league = await this.client.League.get(nerd.summonerId, nerd.region)
+    const league = await this.client.League.get(nerd.summonerId, nerd.region as Regions)
     league.response.forEach(r => {
       const tier = GetTierObject(r.tier)
       const rank = GetRankObject(r.rank)

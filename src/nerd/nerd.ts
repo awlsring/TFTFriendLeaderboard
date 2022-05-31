@@ -2,7 +2,7 @@ import { Regions } from "twisted/dist/constants"
 
 export interface NerdInfo {
   name: string
-  region: Regions
+  region: string
   summonerId?: string
   puuid?: string
 }
